@@ -1,85 +1,75 @@
 "use client";
 
+import { useEffect, useState, useRef } from "react";
+import io from "socket.io-client";
 import ChatForm from "@/components/ChatForm";
-import ChatMessage from "@/components/ChatMessage";
-import { socket } from "@/lib/socketClient";
-import { useEffect, useState } from "react";
+
+interface Message {
+  sender: string;
+  message: string;
+}
 
 export default function Home() {
-  const [room, setRoom] = useState("");
-  const [joined, setJoined] = useState(false);
-  const [messages, setMessages] = useState<
-    { sender: string; message: string }[]
-  >([]);
-  const [userName, setUserName] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [socket, setSocket] = useState<any>(null);
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    socket.on("message", (data) => {
-      setMessages((prev) => [...prev, data]);
-    });
+    const newSocket = io();
+    setSocket(newSocket);
 
-    socket.on("user_joined", (message) => {
-      setMessages((prev) => [...prev, { sender: "system", message }]);
+    newSocket.on("message", (message: Message) => {
+      setMessages((prevMessages) => [...prevMessages, message]);
     });
 
     return () => {
-      socket.off("user_joined");
-      socket.off("message");
+      newSocket.disconnect();
     };
   }, []);
-  const handleJoinRoom = () => {
-    if (room && userName) {
-      socket.emit("join-room", { room, username: userName });
-      setJoined(true);
+
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages]);
+
+  const handleSendMessage = (msg: string) => {
+    if (socket) {
+      socket.emit("message", msg);
     }
   };
-  const handleSendMessage = (message: string) => {
-    const data = { room, message, sender: userName };
-    setMessages((prev) => [...prev, { sender: userName, message }]);
-    socket.emit("message", data);
-  };
+
   return (
-    <div className="flex mt-24 justify-center w-full">
-      {!joined ? (
-        <div className="flex w-full max-w-3xl mx-auto flex-col items-center">
-          <h1 className="mb-4 text-2xl font-bold">Join a Room</h1>
-          <input
-            type="text"
-            placeholder="Enter your username"
-            value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-            className="w-64 px-4 py-2 mb-4 border-2 rounded-lg"
-          />
-          <input
-            type="text"
-            placeholder="Enter room name"
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            className="w-64 px-4 py-2 mb-4 border-2 rounded-lg"
-          />
-          <button
-            onClick={handleJoinRoom}
-            className="px-4 py-2 text-white bg-blue-500 rounded-lg"
-          >
-            Join Room
-          </button>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+      <div className="w-full max-w-md bg-white rounded-lg shadow-md p-4 flex flex-col">
+        <h1 className="text-2xl font-bold mb-4 text-center">Chat App</h1>
+
+        <div
+          ref={chatContainerRef}
+          className="flex flex-col gap-2 overflow-y-auto h-96 border p-2 rounded-md"
+        >
+          {messages.map((msg, index) => (
+            <div
+              key={index}
+              className={`p-2 rounded-lg ${
+                msg.sender === "You"
+                  ? "bg-blue-500 text-white self-end"
+                  : "bg-gray-200 text-black self-start"
+              }`}
+            >
+              <strong>{msg.sender}: </strong>
+              {msg.message}
+            </div>
+          ))}
         </div>
-      ) : (
-        <div className="w-full max-w-3xl mx-auto">
-          <h1 className="mb-4 text-2xl font-bold">Room: {room}</h1>
-          <div className="h-[500px] overflow-y-auto p-4 mb-4 bg-gray-200 border2 rounded-lg">
-            {messages.map((msg, index) => (
-              <ChatMessage
-                key={index}
-                sender={msg.sender}
-                message={msg.message}
-                isOwnMessage={msg.sender === userName}
-              />
-            ))}
-          </div>
-          <ChatForm onSendMessage={handleSendMessage} />
-        </div>
-      )}
+
+        <ChatForm onSendMessage={handleSendMessage} />
+      </div>
     </div>
   );
 }
